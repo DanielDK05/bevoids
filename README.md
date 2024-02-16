@@ -1,7 +1,7 @@
 # Bevoids
 A **WIP** bevy plugin that aims to make boids easy to add to your game.
 
-[Gif showing 2d boids](gifs/2d_boids.gif)
+![Gif showing 2d boids](gifs/2d_boids.gif)
 
 ## How to use
 I recommend to check out [examples](examples), to see how bevoids is used.
