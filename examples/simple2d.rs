@@ -44,9 +44,7 @@ fn setup(
 
             commands.spawn((
                 MaterialMesh2dBundle {
-                    mesh: meshes
-                        .add(shape::RegularPolygon::new(10.0, 3).into())
-                        .into(),
+                    mesh: meshes.add(RegularPolygon::new(10.0, 3)).into(),
                     material: materials.add(ColorMaterial::from(Color::WHITE)),
                     transform: Transform::from_xyz(x as f32 * spacer, y as f32 * spacer, 0.0),
                     ..default()

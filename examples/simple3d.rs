@@ -26,7 +26,7 @@ fn main() {
         })
         .insert_resource(AmbientLight {
             color: Color::WHITE,
-            brightness: 0.7,
+            brightness: 150.0,
         })
         .add_systems(Startup, setup)
         .run()
@@ -47,7 +47,7 @@ fn setup(
     });
     commands.spawn(PbrBundle {
         mesh: meshes
-            .add(shape::Plane::from_size(BORDER_WIDTH).into())
+            .add(Plane3d::default().mesh().size(BORDER_WIDTH, BORDER_WIDTH))
             .into(),
         material: materials.add(StandardMaterial::from(Color::LIME_GREEN)),
         transform: Transform::from_xyz(0.0, -BORDER_HEIGHT / 2.0, 0.0),
@@ -61,7 +61,7 @@ fn setup(
 
                 commands.spawn((
                     PbrBundle {
-                        mesh: meshes.add(shape::Box::new(7.5, 7.5, 20.0).into()).into(),
+                        mesh: meshes.add(Cuboid::new(7.5, 7.5, 20.0)).into(),
                         material: materials.add(StandardMaterial::from(Color::RED)),
                         transform: Transform::from_xyz(
                             x as f32 * spacer,

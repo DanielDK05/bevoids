@@ -256,9 +256,9 @@ mod systems {
             let forward = transform.forward();
 
             match config.space {
-                BoidSpace::TwoDimensional => transform.look_to(forward, boid.velocity.normalize()),
+                BoidSpace::TwoDimensional => transform.look_to(*forward, boid.velocity.normalize()),
                 BoidSpace::ThreeDimensional => {
-                    transform.look_to(boid.velocity.normalize(), forward)
+                    transform.look_to(boid.velocity.normalize(), *forward)
                 }
             }
         }
