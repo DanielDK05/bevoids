@@ -1,4 +1,4 @@
-use bevy::prelude::{Component, Plugin, Resource, Update, Vec3};
+use bevy::prelude::{Component, Plugin, Resource, Update, Vec2, Vec3};
 
 pub struct BoidsPlugin;
 
@@ -97,6 +97,14 @@ impl Boid {
     }
 }
 
+#[derive(Component)]
+pub enum BoidCollider {
+    Box(Vec3),
+    Sphere(f32),
+    Rect(Vec2),
+    Circle(f32),
+}
+
 #[derive(Component, Default)]
 pub struct BoidBorder {
     pub top: Option<(f32, f32)>,
@@ -105,6 +113,62 @@ pub struct BoidBorder {
     pub right: Option<(f32, f32)>,
     pub front: Option<(f32, f32)>,
     pub back: Option<(f32, f32)>,
+}
+
+impl BoidBorder {
+    fn calc_avoidance(&self, position: Vec3, boid: &Boid) -> Vec3 {
+        // returns `point` normalized to [0, 1] range, allowing overflow for increased strength.
+        fn normalize(point: f32, start: f32, end: f32) -> f32 {
+            (point - start) / (end - start).clamp(0.0, f32::MAX)
+        }
+
+        let mut movement_vector = Vec3::ZERO;
+
+        if let Some((left, margin)) = self.left {
+            if position.x < left + margin {
+                let normalized_point = 1.0 - normalize(position.x, left, left + margin);
+
+                movement_vector.x += boid.turning_strength.border * normalized_point;
+            }
+        }
+        if let Some((right, margin)) = self.right {
+            if position.x > right - margin {
+                let normalized_point = normalize(position.x, right - margin, right);
+
+                movement_vector.x -= boid.turning_strength.border * normalized_point;
+            }
+        }
+        if let Some((top, margin)) = self.top {
+            if position.y > top - margin {
+                let normalized_point = normalize(position.y, top - margin, top);
+
+                movement_vector.y -= boid.turning_strength.border * normalized_point;
+            }
+        }
+        if let Some((bottom, margin)) = self.bottom {
+            if position.y < bottom + margin {
+                let normalized_point = 1.0 - normalize(position.y, bottom, bottom + margin);
+
+                movement_vector.y += boid.turning_strength.border * normalized_point;
+            }
+        }
+        if let Some((front, margin)) = self.front {
+            if position.z < front + margin {
+                let normalized_point = 1.0 - normalize(position.z, front, front + margin);
+
+                movement_vector.z += boid.turning_strength.border * normalized_point;
+            }
+        }
+        if let Some((back, margin)) = self.back {
+            if position.z > back - margin {
+                let normalized_point = normalize(position.z, back - margin, back);
+
+                movement_vector.z -= boid.turning_strength.border * normalized_point;
+            }
+        }
+
+        movement_vector
+    }
 }
 
 mod systems {
@@ -143,14 +207,15 @@ mod systems {
 
                 if distance <= boid.view_config.view_range {
                     if distance < boid.view_config.protected_range {
-                        separation_vector -=
-                            (neighbour_transform.translation - transform.translation).normalize()
-                                * (boid.view_config.protected_range - distance);
+                        let normalized_diff =
+                            (neighbour_transform.translation - transform.translation).normalize();
+                        let strength = boid.view_config.protected_range - distance;
+
+                        separation_vector -= normalized_diff * strength;
                     }
 
                     average_velocity += neighbour_boid.velocity;
                     average_position += neighbour_transform.translation;
-
                     neighbouring_boids += 1;
                 }
             }
@@ -167,65 +232,14 @@ mod systems {
 
             movement_vector += separation_vector * boid.turning_strength.separation;
 
-            let mut border_turn_vector = Vec3::ZERO;
             if let Some(border) = border {
-                fn normalize(point: f32, start: f32, end: f32) -> f32 {
-                    (point - start) / (end - start).clamp(0.0, f32::MAX)
-                }
-
-                if let Some((left, margin)) = border.left {
-                    if transform.translation.x < left + margin {
-                        let normalized_point =
-                            1.0 - normalize(transform.translation.x, left, left + margin);
-
-                        border_turn_vector.x += boid.turning_strength.border * normalized_point;
-                    }
-                }
-                if let Some((right, margin)) = border.right {
-                    if transform.translation.x > right - margin {
-                        let normalized_point =
-                            normalize(transform.translation.x, right - margin, right);
-
-                        border_turn_vector.x -= boid.turning_strength.border * normalized_point;
-                    }
-                }
-                if let Some((top, margin)) = border.top {
-                    if transform.translation.y > top - margin {
-                        let normalized_point =
-                            normalize(transform.translation.y, top - margin, top);
-
-                        border_turn_vector.y -= boid.turning_strength.border * normalized_point;
-                    }
-                }
-                if let Some((bottom, margin)) = border.bottom {
-                    if transform.translation.y < bottom + margin {
-                        let normalized_point =
-                            1.0 - normalize(transform.translation.y, bottom, bottom + margin);
-
-                        border_turn_vector.y += boid.turning_strength.border * normalized_point;
-                    }
-                }
-                if let Some((front, margin)) = border.front {
-                    if transform.translation.z < front + margin {
-                        let normalized_point =
-                            1.0 - normalize(transform.translation.z, front, front + margin);
-
-                        border_turn_vector.z += boid.turning_strength.border * normalized_point;
-                    }
-                }
-                if let Some((back, margin)) = border.back {
-                    if transform.translation.z > back - margin {
-                        let normalized_point =
-                            normalize(transform.translation.z, back - margin, back);
-
-                        border_turn_vector.z -= boid.turning_strength.border * normalized_point;
-                    }
-                }
-                movement_vector += border_turn_vector;
+                movement_vector += border.calc_avoidance(transform.translation, &boid);
             }
 
-            boid.velocity = if (boid.velocity + movement_vector).length_squared() > 0.0 {
-                (boid.velocity + movement_vector).clamp_length(boid.speed.min, boid.speed.max)
+            let new_velocity = boid.velocity + movement_vector;
+
+            boid.velocity = if new_velocity.length_squared() > 0.0 {
+                new_velocity.clamp_length(boid.speed.min, boid.speed.max)
             } else {
                 Vec3::X * boid.speed.min
             };
@@ -239,13 +253,11 @@ mod systems {
         config: Res<BoidsConfig>,
     ) {
         for (mut transform, boid) in boid_query.iter_mut() {
+            let forward = transform.forward();
+
             match config.space {
-                BoidSpace::TwoDimensional => {
-                    let forward = transform.forward();
-                    transform.look_to(forward, boid.velocity.normalize())
-                }
+                BoidSpace::TwoDimensional => transform.look_to(forward, boid.velocity.normalize()),
                 BoidSpace::ThreeDimensional => {
-                    let forward = transform.forward();
                     transform.look_to(boid.velocity.normalize(), forward)
                 }
             }
