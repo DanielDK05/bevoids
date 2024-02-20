@@ -1,5 +1,8 @@
-use bevy::prelude::{Component, Plugin, Resource, Update, Vec2, Vec3};
+use bevy::prelude::{Component, Plugin, Resource, Update, Vec3};
 
+/// The plugin you have to add to use boids.
+///
+/// Nothing special here :)
 pub struct BoidsPlugin;
 
 impl Plugin for BoidsPlugin {
@@ -15,22 +18,36 @@ impl Plugin for BoidsPlugin {
     }
 }
 
+/// The configuration resource of the boids.
+///
+/// This will be moved to a component later on
 #[derive(Resource)]
 pub struct BoidsConfig {
     pub space: BoidSpace,
     pub debug: bool,
 }
 
+/// Whether the boids are in 3d or 2d space
 pub enum BoidSpace {
     TwoDimensional,
     ThreeDimensional,
 }
 
+/// Represents the turning strength for the different parts that make up the boid's
+/// movement.
+///
+/// These parameters are very finnicky, so you might need to tweak a lot.
+/// Refer to [this](https://en.wikipedia.org/wiki/Boids) to understand what
+/// `coherence`, `separation` and `alignment` does.
 #[derive(Clone, Copy)]
 pub struct BoidTurningStrength {
+    /// How strongly the boid steers towards the center of mass of flock.
     pub coherence: f32,
+    /// How strongly the boid turns away from boids to close to it
     pub separation: f32,
+    /// How strongly the boid aligns with the average heading of its flockmates
     pub alignment: f32,
+    /// How strongly the boid turns away from [its borders](BoidBorder)
     pub border: f32,
 }
 
@@ -45,10 +62,18 @@ impl BoidTurningStrength {
     }
 }
 
+/// Represents the different options for view configuration of a boid
+///
+/// **NOTE**: FOV isn't currently implemented.
 #[derive(Clone, Copy)]
 pub struct BoidViewConfig {
+    /// The field of view of a boid.
     pub fov: u32,
+    /// The range that causes a boid to avoid another boid.
+    /// Shouldn't be larger than `view_range`
     pub protected_range: f32,
+    /// How far a boid can see.
+    /// Shouldn't be smaller than `protected_range`
     pub view_range: f32,
 }
 
@@ -62,6 +87,7 @@ impl BoidViewConfig {
     }
 }
 
+/// Represents the min/max speed limits of a boid
 #[derive(Clone, Copy)]
 pub struct BoidSpeed {
     min: f32,
@@ -74,10 +100,46 @@ impl BoidSpeed {
     }
 }
 
+/// The actual boid component. Attach this to any entity that should act like a boid.
+///
+/// **NOTE**: This will take control of the entity's [Transform](bevy::prelude::Transform)
+///
+/// ## Example
+/// ```rust
+/// commands.spawn((
+///    MaterialMesh2dBundle {
+///       mesh: meshes.add(RegularPolygon::new(10.0, 3)).into(),
+///       material: materials.add(ColorMaterial::from(Color::WHITE)),
+///       transform: Transform::from_xyz(x as f32 * spacer, y as f32 * spacer, 0.0),
+///       ..default()
+///    },
+///    Boid::new(
+///       BoidSpeed::new(BOID_MIN_SPEED, BOID_MAX_SPEED),
+///       BoidTurningStrength::new(
+///          BOID_COHESION,
+///          BOID_SEPARATION,
+///          BOID_ALIGNMENT,
+///          BOID_BORDER_TURN_STRENGTH,
+///       ),
+///       BoidViewConfig::new(BOID_FOV, BOID_PROTECTED_RANGE, BOID_VIEW_RANGE),
+///    ),
+/// ));
+/// ```
+///
+/// If you want to fetch the boid's current velocity, use the [Boid::velocity] method.
 #[derive(Component, Clone, Copy)]
 pub struct Boid {
+    /// The boid's min/max speed limits
     pub speed: BoidSpeed,
+    /// The boid's turning strength parameters.
+    /// These parameters are very finnicky. Stick to small numbers.
+    ///
+    /// To learn how to configure these values, refer to [this](https://en.wikipedia.org/wiki/Boids)
     pub turning_strength: BoidTurningStrength,
+    /// The boid's view configuration.
+    /// This includes FOV, View range and protected range.
+    ///
+    /// **NOTE**: FOV isn't currently implemented.
     pub view_config: BoidViewConfig,
     velocity: Vec3,
 }
@@ -95,12 +157,43 @@ impl Boid {
             velocity: Vec3::ZERO,
         }
     }
+
+    pub fn velocity(&self) -> Vec3 {
+        self.velocity
+    }
 }
 
+/// Component used for grouping boids. This effectively means that boids in
+/// different groups ignore each other.
+///
+/// ## How to use
+/// The collision group is used as a bitflag. This means one boid can have multiple
+/// collision groups.
+///
+/// ```rust
+/// // Will ignore boid 3
+/// let boid1 = commands.spawn((
+///    Boid::default(),
+///    BoidCollisionGroup::GROUP_1
+/// )).id();
+///
+/// // Will interact with both boids
+/// let boid2 = commands.spawn((
+///    Boid::default(),
+///    BoidCollisionGroup::GROUP_1 | BoidCollisionGroup::GROUP_2
+/// )).id();
+///
+/// // Will ignore boid 1
+/// let boid3 = commands.spawn((
+///    Boid::default(),
+///    BoidCollisionGroup::GROUP_2
+/// )).id();
+/// ```
 #[derive(Component, Clone, Copy)]
 pub struct BoidCollisionGroup(u32);
 
 bitflags::bitflags! {
+
     impl BoidCollisionGroup: u32 {
         /// The group n°1.
         const GROUP_1 = 1 << 0;
@@ -180,14 +273,14 @@ impl Default for BoidCollisionGroup {
     }
 }
 
-#[derive(Component)]
-pub enum BoidCollider {
-    Box(Vec3),
-    Sphere(f32),
-    Rect(Vec2),
-    Circle(f32),
-}
-
+/// Represents the border that a boid should stay within
+///
+/// Each field is optional, to allow for any border you want!
+///
+/// The tuple in each field goes like this: (point, margin).
+/// That means the first value is the actual point in space that the border is.
+/// The margin is added onto that space, and basically chooses when the boid should start turning.
+/// With a smaller margin, you should increase the strength of the [BoidTurningStrength] `border` field
 #[derive(Component, Default)]
 pub struct BoidBorder {
     pub top: Option<(f32, f32)>,
@@ -275,12 +368,7 @@ mod systems {
         let boids = boid_query
             .iter()
             .map(|(transform, boid, _, collision_group, entity)| {
-                (
-                    *transform,
-                    *boid,
-                    collision_group.and_then(|cg| Some(*cg)),
-                    entity,
-                )
+                (*transform, *boid, collision_group.copied(), entity)
             })
             .collect::<Vec<_>>();
 
