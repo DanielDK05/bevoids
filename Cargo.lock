@@ -294,6 +294,7 @@ name = "bevoids"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bitflags 2.4.2",
 ]
 
 [[package]]
