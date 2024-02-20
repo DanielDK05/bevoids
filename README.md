@@ -1,7 +1,7 @@
 # Bevoids
 A **WIP** bevy plugin that aims to make boids easy to add to your game.
 
-[![Crates.io](https://img.shields.io/crates/l/https%3A%2F%2Fcrates.io%2Fcrates%2Fbevoids)](https://crates.io/crates/bevoids)
+[![Crates.io](https://img.shields.io/crates/v/bevoids)](https://crates.io/crates/bevoids)
 
 ![Gif showing 2d boids](gifs/2d_boids.gif)
 
